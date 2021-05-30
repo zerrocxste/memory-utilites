@@ -1,4 +1,4 @@
-#include "../src/includes.h"
+#include "../includes.h"
 
 namespace memory_utils
 {
@@ -59,6 +59,25 @@ namespace memory_utils
 		}
 	}
 
+	wchar_t* read_wstring(std::vector<DWORD_OF_BITNESS>address)
+	{
+		size_t length_array = address.size() - 1;
+		DWORD_OF_BITNESS relative_address = address[0];
+		for (int i = 1; i < length_array + 1; i++)
+		{
+			if (is_valid_ptr((LPVOID)relative_address) == false)
+				return NULL;
+
+			if (i < length_array)
+				relative_address = *(DWORD_OF_BITNESS*)(relative_address + address[i]);
+			else
+			{
+				wchar_t* readable_address = (wchar_t*)(relative_address + address[length_array]);
+				return readable_address;
+			}
+		}
+	}
+
 	DWORD_OF_BITNESS get_module_size(DWORD_OF_BITNESS address)
 	{
 		return PIMAGE_NT_HEADERS(address + (DWORD_OF_BITNESS)PIMAGE_DOS_HEADER(address)->e_lfanew)->OptionalHeader.SizeOfImage;
@@ -112,6 +131,37 @@ namespace memory_utils
 		return NULL;
 	}
 
+	std::vector<DWORD_OF_BITNESS> compare_mem_data_vec(const char* pattern, const char* mask, DWORD_OF_BITNESS base, DWORD_OF_BITNESS size, const int patternLength, DWORD speed)
+	{
+		std::vector<DWORD_OF_BITNESS>temp;
+		for (DWORD_OF_BITNESS i = 0; i < size - patternLength; i += speed)
+		{
+			bool found = true;
+			for (DWORD_OF_BITNESS j = 0; j < patternLength; j++)
+			{
+				if (mask[j] == '?')
+					continue;
+
+				/*if (IsBadCodePtr((FARPROC)(base + i + j)) != NULL)
+					continue;*/
+
+				if (pattern[j] != *(char*)(base + i + j))
+				{
+					found = false;
+					break;
+				}
+			}
+
+			if (found)
+			{
+				//return base + i;
+				temp.push_back(base + i);
+			}
+		}
+
+		return temp;
+	}
+
 	DWORD_OF_BITNESS find_pattern(HMODULE module, const char* pattern, const char* mask, DWORD scan_speed)
 	{
 		DWORD_OF_BITNESS base = (DWORD_OF_BITNESS)module;
@@ -126,7 +176,7 @@ namespace memory_utils
 	{
 		SYSTEM_INFO sysInfo;
 		GetSystemInfo(&sysInfo);
-		DWORD_OF_BITNESS base = (DWORD_OF_BITNESS)GetProcessHeap();
+		DWORD_OF_BITNESS base = (DWORD_OF_BITNESS)sysInfo.lpMinimumApplicationAddress;
 		DWORD_OF_BITNESS size = (DWORD_OF_BITNESS)sysInfo.lpMaximumApplicationAddress;
 
 		DWORD_OF_BITNESS base_start = base;
@@ -163,7 +213,7 @@ namespace memory_utils
 
 		SYSTEM_INFO sysInfo;
 		GetSystemInfo(&sysInfo);
-		DWORD_OF_BITNESS base = (DWORD_OF_BITNESS)GetProcessHeap();
+		DWORD_OF_BITNESS base = (DWORD_OF_BITNESS)sysInfo.lpMinimumApplicationAddress;
 		DWORD_OF_BITNESS size = (DWORD_OF_BITNESS)sysInfo.lpMaximumApplicationAddress;
 
 		DWORD_OF_BITNESS base_start = base;
@@ -183,10 +233,13 @@ namespace memory_utils
 
 			if (is_accessible && is_mem_state_ok)
 			{
-				auto compare_result = compare_mem(pattern, mask, start, end, patternLength, scan_speed);
+				auto compare_result = compare_mem_data_vec(pattern, mask, start, end, patternLength, scan_speed);
 
-				if (compare_result != NULL)
-					temp.push_back(compare_result);
+				for (auto res : compare_result)
+				{
+					if (res != NULL)
+						temp.push_back(res);
+				}
 			}
 			base_start += end;
 		}
@@ -245,10 +298,13 @@ namespace memory_utils
 
 			if (is_accessible && is_mem_state_ok)
 			{
-				auto compare_result = compare_mem(pattern, mask, start, end, patternLength, scan_speed);
+				auto compare_result = compare_mem_data_vec(pattern, mask, start, end, patternLength, scan_speed);
 
-				if (compare_result != NULL)
-					temp.push_back(compare_result);
+				for (auto res : compare_result)
+				{
+					if (res != NULL)
+						temp.push_back(res);
+				}
 			}
 			base_start += end;
 		}
@@ -268,5 +324,19 @@ namespace memory_utils
 
 		FlushInstructionCache(GetCurrentProcess(), (LPVOID)instruction_address, sizeof_instruction_byte);
 	}
+
+	void fill_memory_region(DWORD_OF_BITNESS instruction_address, int byte, int sizeof_instruction_byte)
+	{
+		DWORD dwOldProtection = NULL;
+
+		VirtualProtect((LPVOID)instruction_address, sizeof_instruction_byte, PAGE_EXECUTE_READWRITE, &dwOldProtection);
+
+		memset((LPVOID)instruction_address, byte, sizeof_instruction_byte);
+
+		VirtualProtect((LPVOID)instruction_address, sizeof_instruction_byte, dwOldProtection, NULL);
+
+		FlushInstructionCache(GetCurrentProcess(), (LPVOID)instruction_address, sizeof_instruction_byte);
+	}
 }
+
 
