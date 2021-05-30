@@ -70,8 +70,10 @@ namespace memory_utils
 	}
 
 	extern char* read_string(std::vector<DWORD_OF_BITNESS> address);
+	extern wchar_t* read_wstring(std::vector<DWORD_OF_BITNESS>address);
 
 	extern void write_string(std::vector<DWORD_OF_BITNESS> address, char* value);
 
 	extern void patch_instruction(DWORD_OF_BITNESS instruction_address, const char* instruction_bytes, int sizeof_instruction_byte);
+	extern void fill_memory_region(DWORD_OF_BITNESS instruction_address, int byte, int sizeof_instruction_byte);
 }
