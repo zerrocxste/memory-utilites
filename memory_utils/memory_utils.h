@@ -1,6 +1,14 @@
 //memory utils
 //author: zerrocxste
 
+#ifndef MEMORY_UTILS
+#define MEMORY_UTILS
+
+#define _CRT_SECURE_NO_WARNINGS
+
+#include <Windows.h>
+#include <vector>
+
 namespace memory_utils
 {
 #ifdef _WIN64
@@ -9,11 +17,9 @@ namespace memory_utils
 #define PTRMAXVAL ((PVOID)0xFFF00000)
 #endif
 
-	extern bool is_valid_ptr(PVOID ptr);
-
-	extern HMODULE get_base();
-
-	extern DWORD_PTR get_base_address();
+	__forceinline bool is_valid_ptr(PVOID ptr, size_t len = sizeof(void*)) {
+		return (ptr >= (PVOID)0x10000) && (ptr < PTRMAXVAL) && ptr != nullptr && !IsBadReadPtr(ptr, len);
+	}
 
 	extern DWORD get_module_size(DWORD_PTR address);
 
@@ -31,58 +37,27 @@ namespace memory_utils
 		DWORD scan_speed,
 		DWORD page_prot = PAGE_EXECUTE_READ, DWORD page_state = MEM_COMMIT, DWORD page_type = MEM_PRIVATE);
 
-	template<class T>
-	T read_pointer(std::vector<DWORD_PTR> list)
-	{
-		if (list.empty())
-			return NULL;
-
-		DWORD_PTR ptr = list.front();
-
-		for (INT_PTR i = 0; i < list.size(); i++)
-		{
-			if (!is_valid_ptr((LPVOID)ptr))
-				break;
-
-			if (i < (INT_PTR)(list.size() - 2))
-				ptr = *(DWORD_PTR*)(ptr + list.at(i + 1));
-			else
-				return list.size() == 1 ? (T)ptr : (T)(ptr + list.back());
-		}
-
-		return NULL;
+	__forceinline uintptr_t ptr_path(uintptr_t ptr) {
+		return ptr;
 	}
 
-	template<class T>
-	T read_value(std::vector<DWORD_PTR> list)
-	{
-		T* ptr = read_pointer<T*>(list);
-
-		if (ptr == NULL)
-			return T();
-
-		return *(T*)ptr;
+	__forceinline uintptr_t ptr_path(uintptr_t ptr, uintptr_t last_offset) {
+		return ptr + last_offset;
 	}
 
-	template<class T>
-	bool write(std::vector<DWORD_PTR> list, T my_value)
-	{
-		T* ptr = read_pointer<T*>(list);
-
-		if (ptr == NULL)
-			return false;
-
-		*ptr = my_value;
-
-		return true;
+	template <class... _Args>
+	__forceinline uintptr_t ptr_path(uintptr_t ptr, uintptr_t offset, _Args... args) {
+		ptr += offset;
+		return is_valid_ptr((void*)ptr) ? ptr_path(*(uintptr_t*)ptr, args...) : 0;
 	}
 
-	extern char* read_string(std::vector<DWORD_PTR> address);
-	extern wchar_t* read_wstring(std::vector<DWORD_PTR>address);
-
-	extern bool write_string(std::vector<DWORD_PTR> address, char* my_value);
-	extern bool write_wstring(std::vector<DWORD_PTR> address, wchar_t* my_value);
-
-	extern bool patch_instruction(DWORD_PTR instruction_address, const char* instruction_bytes, int sizeof_instruction_byte);
-	extern bool fill_memory_region(DWORD_PTR instruction_address, int byte, int sizeof_instruction_byte);
+	template <class _Ty, class _First, class... _Args>
+	__forceinline _Ty read(_First ptr, _Args... args) {
+		uintptr_t ret = ptr_path((uintptr_t)ptr, uintptr_t(args)...);
+		return is_valid_ptr((void*)ret, sizeof(_Ty))
+			? *(_Ty*)ret
+			: _Ty{};
+	}
 }
+
+#endif // MEMORY_UTILS
